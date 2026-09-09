@@ -474,34 +474,35 @@ N = (C_N + w_{C_N})\bar q S b.$$
         <div class="box">
           <h3 class="title is-4">Dubins Vehicle</h3>
           <div class="content">
-            <p>Obstacle avoidance under uncertain actuation and model mismatch.</p>
+            <p>An acceleration-controlled Dubins vehicle must reach a goal while avoiding two circular obstacles under actuation uncertainty, model mismatch, and noisy obstacle measurements.</p>
             <h4 class="title is-5" style="margin-top: 1.5rem;">Dubins Model</h4>
             <p>We first introduce the Dubins model in continuous time with the state:</p>
             $$x=\begin{bmatrix}
-                p_x & p_y & \theta & v
+                p_x & p_y & \psi & v
             \end{bmatrix}^\top$$
             <p>with the dynamics:</p>
             $$\begin{align}
-            \dot{p}_x &= v \cos\theta & \quad \dot{p}_y &= v \sin\theta \\
-            \dot{\theta} &= (1 + \eta_\omega) u_\omega + v \xi_\omega & \quad \dot{v} &= (1 + \eta_a) u_a + v \xi_a
+            \dot{p}_x &= v \cos\psi & \quad \dot{p}_y &= v \sin\psi \\
+            \dot{\psi} &= (1 + \eta_\omega) u_\omega + v \xi_\omega & \quad \dot{v} &= (1 + \eta_a) u_a + v \xi_a
             \end{align}$$
-            <p>The noise vector \(\mathbf{w}^f= [\xi_a, \xi_\omega, \eta_a, \eta_\omega]^T\) depicts model mismatch and actuator gain error with a Gaussian mixture model as the true noise distribution, from which limited empirical noise samples are available. The constrained inputs are acceleration \(u_a \in [-5.0, 5.0]\) and turn rate \(u_\omega \in [-\frac{\pi}{4}, \frac{\pi}{4}]\). A lower bound on velocity is enforced in the dynamics such that \(v \ge 10.0\), which prevents the vehicle from stopping.</p>
+            <p>The noise vector \(\mathbf{w}^f_t = [\xi_a, \xi_\omega, \eta_a, \eta_\omega]^\top\) captures model mismatch and actuator gain errors. The constrained inputs are acceleration \(u_a \in [-5.0, 5.0]\) and turn rate \(u_\omega \in [-\frac{\pi}{4}, \frac{\pi}{4}]\). Bounds on velocity are enforced in the dynamics such that \(v \in [9,20]\), which prevents the vehicle from stopping.</p>
 
             <h4 class="title is-5" style="margin-top: 1.5rem;">Uncertainty Model</h4>
-            <p>The uncertainty vector \(w=[\xi_a,\xi_w,\eta_a,\eta_w]\) is generated from a two-component Gaussian mixture:</p>
-            $$w \sim 0.8\,\mathcal{N}\!\left(\mu_{\mathrm{nom}},\operatorname{diag}(\sigma_{\mathrm{nom}}^2)\right)
-\;+
-\;0.2\,\mathcal{N}\!\left(\mu_{\mathrm{out}},\operatorname{diag}(\sigma_{\mathrm{out}}^2)\right),$$
-            <p>with \(\mu_{\mathrm{nom}}=[0,0,0,0]\), \(\sigma_{\mathrm{nom}}=[0.05,0.02,0.03,0.03]\), \(\mu_{\mathrm{out}}=[-0.15,\,0.08,\,-0.10,\,0.05]\), and \(\sigma_{\mathrm{out}}=[0.02,0.01,0.05,0.05]\). A finite offline dataset (default size \(5000\)) is first sampled i.i.d. from this mixture, and the simulation then draws disturbances by uniform resampling with replacement from that dataset, i.e., from its empirical distribution \(\hat P=\frac{1}{5000}\sum_{i=1}^{5000}\delta_{w^{(i)}}\).</p>
+            <p>The true process-noise distribution \(P_T^\pi\) is generated from a finite, truncated dataset sampled from a Gaussian mixture model. To introduce distribution shift, each sample is perturbed by a randomly oriented unit vector scaled by the Wasserstein radius \(\beta\), producing \(\hat P_T^\pi\) such that:</p>
+            $$W_\infty\!\left(P_T^\pi, \hat P_T^\pi\right) \le \beta.$$
+            <p>We also include noisy measurements of the obstacle centers and radii. These measurements introduce additive uncertainty in the obstacle parameters \(\boldsymbol{\theta}\). The known distribution \(P^\theta\) is a zero-mean skew-normal distribution with shape parameter \(\alpha_{\mathrm{shape}}=5.0\) and scale parameter \(\gamma_{\mathrm{scale}}=1.0\), clipped to \(\pm 3\gamma_{\mathrm{scale}}\).</p>
 
-            <h4 class="title is-5">Safety Constraint and CBF</h4>
-            <p>The safety constraint is to avoid two static circular obstacles with centers \((p^i_x, p^i_y)\) and radii \(R_i\), \(i=1,2\). This defines the safe set:</p>
-            $$\mathcal{S} = \left\{x \in \mathbb{R}^4 \mid h(x) = \min_{i\in\{1,2\}}\left((p_x - p^i_x)^2 + (p_y - p^i_y)^2 - R_i^2\right) > 0\right\}$$
-            <p>Since the system has relative degree two with respect to the safety constraint, a higher-order CBF (HOCBF) is required. The intermediate barrier function is defined as \(h_e(x) = \dot{h}(x) + \alpha_1 h(x)\) with \(\alpha_1 > 0\). The DR-CBF method enforces the control barrier condition over a Wasserstein ambiguity set \(\mathcal{M}_N^r\) centered on the empirical distribution of offline disturbance samples:</p>
-            $$\inf_{\mathbb{P} \in \mathcal{M}_N^r} \mathbb{P} \left( \dot{h}_e(x, u, \mathbf{w}^f) + \alpha_2 h_e(x) \ge 0 \right) \ge 1 - \varepsilon$$
+            <h4 class="title is-5">Safety Constraint and Backup Set</h4>
+            <p>The safety constraint is to avoid two static circular obstacles. Their parameters are aggregated as \(\boldsymbol{\theta}=[\theta_1^\top,\theta_2^\top]^\top\), where \(\theta_i=[p_x^i,p_y^i,R_i]\) contains the center and radius of obstacle \(i\). This defines the safe set:</p>
+            $$\mathcal{S}(\boldsymbol{\theta}) = \left\{x \in \mathbb{R}^4 \mid h(x,\boldsymbol{\theta}) = \min_{i\in\{1,2\}}\left((p_x - p^i_x)^2 + (p_y - p^i_y)^2 - R_i^2\right) \ge 0\right\}.$$
+            <p>The backup controller slows the vehicle to its minimum speed and turns away from the nearest obstacle at the maximum yaw rate to enter an orbit. We synthesize an \(\alpha\)-probabilistic controlled invariant set for this controller offline. The resulting set is torus-shaped in position and accounts for stochastic drift away from a perfect circular orbit.</p>
 
             <h4 class="title is-5">Implementation and Control</h4>
-            <p>For implementation, we discretize the continuous-time dynamics with Euler's method with \(\Delta t = 0.05\). The nominal controller for both DRS-gatekeeper and the DR-CBF produces a turn rate command proportional to the heading error to the goal and an acceleration command proportional to the target velocity error. For the backup controller in DRS-gatekeeper, we employ an orbit controller that slows the vehicle to its minimum speed and turns away from the nearest obstacle at the maximum yaw rate, entering an orbit.</p>
+            <p>For implementation, we discretize the continuous-time dynamics using forward Euler integration with \(\Delta t = 0.05\). The nominal controller produces a turn rate command proportional to the heading error to the goal and an acceleration command proportional to the target velocity error.</p>
+
+            <h4 class="title is-5">Baseline Comparison</h4>
+            <p>We compare DRS-gatekeeper against a distributionally robust control barrier function (DR-CBF), Wasserstein tube model predictive control (WT-MPC), statistical model predictive shielding (SMPS), and vanilla gatekeeper. All methods use the same nominal goal-tracking controller. The backup-based methods - SMPS, vanilla gatekeeper, and DRS-gatekeeper - use the orbit controller described above, while WT-MPC uses a linearized Dubins model because it is restricted to linear systems.</p>
+            <p>The comparison is evaluated over 25 random initial states with \(\varepsilon=0.1\), \(\delta=0.1\), \(\beta=0.1\), and \(T=100\). For DRS-gatekeeper, we use \(M=50\) candidate switching times and \(N=1000\) sampled rollouts.</p>
           </div>
         </div>
       </div>
